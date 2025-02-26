@@ -7,30 +7,21 @@ def main():
     """
     Main function to demonstrate the workflow.
     """
-    # Step 1: Convert TopoJSON to GeoJSON or download complete UK GeoJSON
+    # Step 1: Convert custom JSON to GeoJSON
     converter = GeoConverter()
     
-    # Option 1: Convert multiple TopoJSON URLs to a single GeoJSON
-    topojson_urls = [
-        "https://martinjc.github.io/UK-GeoJSON/json/eng/wpc_by_lad/topo_E07000065.json",  # East Sussex
-        "https://martinjc.github.io/UK-GeoJSON/json/eng/wpc_by_lad/topo_E07000116.json"   # Tunbridge Wells
-    ]
+    # Load the custom JSON file
+    json_input = "customjson.json"
     geojson_output = "uk_constituencies_local.geojson"
     
-    # Load and merge the TopoJSON data
-    if converter.load_topojson(topojson_urls):
+    # Load and convert the JSON data
+    if converter.load_topojson(json_input):
         converter.save_geojson(geojson_output)
-        print(f"Successfully created merged GeoJSON from {len(topojson_urls)} sources")
+        print(f"Successfully converted custom JSON to GeoJSON")
     else:
-        print("Failed to convert TopoJSON to GeoJSON.")
+        print("Failed to convert custom JSON to GeoJSON.")
     
-    # Option 2: Download a complete UK constituencies GeoJSON
-    # This is more reliable for creating proper choropleth maps
-    complete_geojson_output = "uk_constituencies_complete.geojson"
-    converter.download_complete_uk_geojson(complete_geojson_output)
-    
-    # Use the complete GeoJSON for the rest of the workflow
-    geojson_to_use = complete_geojson_output if os.path.exists(complete_geojson_output) else geojson_output
+    geojson_to_use = geojson_output
     
     # Step 2: Generate a choropleth visualization
     choropleth = ChoroplethGenerator()
@@ -41,14 +32,14 @@ def main():
         example_data = {
             # East Sussex constituencies
             "Bexhill and Battle": 75,
-            "Eastbourne": 42,
-            "Lewes": 63,
-            "Wealden": 89,
+            "Crowborough": 42,
+            "Tonbridge": 63,
+            "Heathfield": 89,
             # Tunbridge Wells constituencies
             "Tunbridge Wells": 58,
             # Add more constituencies if using the complete UK GeoJSON
-            "Brighton, Kemptown": 55,
-            "Brighton, Pavilion": 82,
+            "High Weald": 55,
+            "Uckfield": 82,
             "Hove": 67
         }
         
