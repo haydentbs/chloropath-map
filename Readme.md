@@ -48,7 +48,7 @@ python main.py
 
 ## Screenshot
 
-![Interactive Map Screenshot](path/to/screenshot.png)
+![Interactive Map Screenshot](images/image.png)
 
 ## Troubleshooting
 
