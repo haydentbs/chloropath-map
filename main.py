@@ -67,7 +67,7 @@ def main():
         print("Failed to load GeoJSON for choropleth generation.")
         return
     
-    # Step 3: Create interactive maps
+    # Step 3: Create interactive map
     map_creator = InteractiveMapCreator()
     
     # Load the GeoJSON
@@ -75,18 +75,19 @@ def main():
         # Add the same data
         map_creator.add_data(example_data, "example_value")
         
-        # Create a basic interactive map
-        map_creator.create_basic_map(
-            output_path="interactive_choropleth.html"
+        # Create an interactive map with enhanced features
+        map_creator.create_interactive_map(
+            output_path="interactive_choropleth.html",
+            title="UK Constituencies - Example Values",
+            color_scheme="RdYlGn",  # Red-Yellow-Green color scheme
+            show_title=True,
+            show_legend=True,
+            add_layer_control=True,
+            zoom_start=6
         )
         
-        # Create an enhanced interactive map with popups
-        map_creator.create_enhanced_map(
-            output_path="interactive_choropleth_popup.html"
-        )
-        
-        print("\nAll maps created successfully!")
-        print("Open the HTML files in your web browser to view the interactive maps.")
+        print("\nInteractive map created successfully!")
+        print("Open the HTML file in your web browser to view the map.")
     else:
         print("Failed to load GeoJSON for interactive map creation.")
 

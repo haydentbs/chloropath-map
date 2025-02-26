@@ -2,9 +2,11 @@ import folium
 import geopandas as gpd
 import json
 import os
-import branca.colormap as cm
 import pandas as pd
 import numpy as np
+from shapely.geometry import mapping
+import branca.colormap as cm
+from folium.plugins import FloatImage
 
 class InteractiveMapCreator:
     """
@@ -17,6 +19,7 @@ class InteractiveMapCreator:
         self.name_column = None
         self.data_column = None
         self.map = None
+        self.layer_control = None
     
     def load_geojson(self, geojson_path):
         """
@@ -90,58 +93,45 @@ class InteractiveMapCreator:
             print(f"Error adding data: {e}")
             return False
     
-    def generate_random_data(self, data_column_name='random_value', min_val=0, max_val=100):
+    def create_interactive_map(self, output_path='interactive_map.html', 
+                              title=None, 
+                              tiles='cartodbpositron', 
+                              zoom_start=7,
+                              color_scheme='RdYlGn',
+                              show_title=True,
+                              show_legend=True,
+                              add_layer_control=True):
         """
-        Generate random data for demonstration purposes.
+        Create an interactive choropleth map with popups and layer controls.
         
         Args:
-            data_column_name: Name for the data column
-            min_val: Minimum value for random data
-            max_val: Maximum value for random data
+            output_path: Path to save the HTML map
+            title: Title for the map (optional)
+            tiles: Map tiles to use (default: 'cartodbpositron')
+            zoom_start: Initial zoom level (default: 7)
+            color_scheme: Color scheme for choropleth (default: 'RdYlGn')
+            show_title: Whether to show the title (default: True)
+            show_legend: Whether to show the legend (default: True)
+            add_layer_control: Whether to add layer controls (default: True)
             
         Returns:
-            bool: True if successful, False otherwise
+            folium.Map: The Folium map object
         """
         if self.gdf is None:
             print("GeoDataFrame not loaded.")
-            return False
-        
-        try:
-            # Generate random data
-            self.data_column = data_column_name
-            self.gdf[self.data_column] = np.random.randint(min_val, max_val, size=len(self.gdf))
-            
-            print(f"Generated random data in column '{self.data_column}'")
-            return True
-        except Exception as e:
-            print(f"Error generating random data: {e}")
-            return False
-    
-    def create_basic_map(self, output_path='interactive_choropleth.html', 
-                         tiles='cartodbpositron', zoom_start=9):
-        """
-        Create a basic interactive choropleth map.
-        
-        Args:
-            output_path: Path to save the HTML map
-            tiles: Map tiles to use
-            zoom_start: Initial zoom level
-            
-        Returns:
-            folium.Map: The map object
-        """
-        if self.gdf is None or self.name_column is None:
-            print("GeoDataFrame not properly loaded or name column not identified.")
             return None
         
         if self.data_column is None:
-            print("No data column specified. Use add_data() or generate_random_data() first.")
+            print("No data column specified. Use add_data() first.")
             return None
         
         try:
+            # Project to Web Mercator for accurate centroid calculation
+            gdf_projected = self.gdf.to_crs(epsg=3857)
+            
             # Calculate the center of the map
-            center_lat = self.gdf.geometry.centroid.y.mean()
-            center_lon = self.gdf.geometry.centroid.x.mean()
+            center_lat = gdf_projected.geometry.centroid.to_crs(epsg=4326).y.mean()
+            center_lon = gdf_projected.geometry.centroid.to_crs(epsg=4326).x.mean()
             
             # Create a Folium map
             self.map = folium.Map(
@@ -150,119 +140,52 @@ class InteractiveMapCreator:
                 tiles=tiles
             )
             
-            # Create a colormap
+            # Add a title if provided and show_title is True
+            if title and show_title:
+                title_html = f'''
+                <div style="position: fixed; top: 10px; left: 50%; transform: translateX(-50%); 
+                            z-index: 1000; background-color: white; padding: 10px; 
+                            border: 1px solid grey; border-radius: 5px;">
+                    <h3 style="margin: 0;">{title}</h3>
+                </div>
+                '''
+                self.map.get_root().html.add_child(folium.Element(title_html))
+            
+            # Create a more sophisticated colormap using branca
             min_value = self.gdf[self.data_column].min()
             max_value = self.gdf[self.data_column].max()
             
-            colormap = cm.linear.viridis.scale(min_value, max_value)
-            colormap.caption = self.data_column.replace('_', ' ').title()
+            # Define color schemes
+            color_schemes = {
+                'RdYlGn': ['red', 'yellow', 'green'],
+                'YlOrRd': ['yellow', 'orange', 'red'],
+                'BuPu': ['blue', 'purple'],
+                'Spectral': ['red', 'orange', 'yellow', 'green', 'blue'],
+                'Blues': ['lightblue', 'darkblue'],
+                'Reds': ['lightsalmon', 'darkred'],
+                'Greens': ['lightgreen', 'darkgreen'],
+                'Purples': ['lavender', 'purple'],
+                'Greys': ['lightgrey', 'black']
+            }
             
-            # Convert GeoDataFrame to GeoJSON
-            geojson_data = json.loads(self.gdf.to_json())
+            # Get the colors for the selected scheme or use a default
+            colors = color_schemes.get(color_scheme, ['red', 'yellow', 'green'])
             
-            # Add the choropleth layer
-            folium.Choropleth(
-                geo_data=geojson_data,
-                name='Choropleth',
-                data=self.gdf,
-                columns=[self.name_column, self.data_column],
-                key_on=f'feature.properties.{self.name_column}',
-                fill_color='YlGnBu',
-                fill_opacity=0.7,
-                line_opacity=0.2,
-                legend_name=self.data_column.replace('_', ' ').title()
-            ).add_to(self.map)
-            
-            # Add tooltips
-            style_function = lambda x: {'fillColor': '#ffffff', 
-                                       'color': '#000000', 
-                                       'fillOpacity': 0.1, 
-                                       'weight': 0.1}
-            highlight_function = lambda x: {'fillColor': '#000000', 
-                                           'color': '#000000', 
-                                           'fillOpacity': 0.50, 
-                                           'weight': 0.1}
-            
-            # Create tooltip with name and value
-            tooltip_fields = [self.name_column, self.data_column]
-            tooltip_aliases = ['Constituency:', 'Value:']
-            
-            # Add GeoJSON layer with tooltips
-            folium.GeoJson(
-                geojson_data,
-                style_function=style_function,
-                control=False,
-                highlight_function=highlight_function,
-                tooltip=folium.features.GeoJsonTooltip(
-                    fields=tooltip_fields,
-                    aliases=tooltip_aliases,
-                    style=("background-color: white; color: #333333; font-family: arial; font-size: 12px; padding: 10px;")
-                )
-            ).add_to(self.map)
-            
-            # Add layer control
-            folium.LayerControl().add_to(self.map)
-            
-            # Add colormap to the map
-            self.map.add_child(colormap)
-            
-            # Ensure the directory exists
-            os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else '.', exist_ok=True)
-            
-            # Save the map
-            self.map.save(output_path)
-            print(f"Interactive choropleth map saved to {output_path}")
-            
-            return self.map
-        except Exception as e:
-            print(f"Error creating interactive choropleth map: {e}")
-            return None
-    
-    def create_enhanced_map(self, output_path='interactive_choropleth_popup.html', 
-                           tiles='cartodbpositron', zoom_start=9):
-        """
-        Create an enhanced interactive choropleth map with popups.
-        
-        Args:
-            output_path: Path to save the HTML map
-            tiles: Map tiles to use
-            zoom_start: Initial zoom level
-            
-        Returns:
-            folium.Map: The map object
-        """
-        if self.gdf is None or self.name_column is None:
-            print("GeoDataFrame not properly loaded or name column not identified.")
-            return None
-        
-        if self.data_column is None:
-            print("No data column specified. Use add_data() or generate_random_data() first.")
-            return None
-        
-        try:
-            # Calculate the center of the map
-            center_lat = self.gdf.geometry.centroid.y.mean()
-            center_lon = self.gdf.geometry.centroid.x.mean()
-            
-            # Create a Folium map
-            self.map = folium.Map(
-                location=[center_lat, center_lon],
-                zoom_start=zoom_start,
-                tiles=tiles
+            # Create a colormap
+            colormap = cm.LinearColormap(
+                colors=colors,
+                vmin=min_value,
+                vmax=max_value,
+                caption=self.data_column.replace('_', ' ').title()
             )
             
-            # Create a colormap
-            min_value = self.gdf[self.data_column].min()
-            max_value = self.gdf[self.data_column].max()
+            # Add the colormap to the map if show_legend is True
+            if show_legend:
+                colormap.add_to(self.map)
             
-            # Function to determine color based on value
-            def get_color(value):
-                if pd.isna(value):
-                    return '#CCCCCC'  # Gray for NaN values
-                
-                # Create a color scale from red to green
-                normalized = (value - min_value) / (max_value - min_value)
-                return f'#{int(255 * (1 - normalized)):02x}{int(255 * normalized):02x}00'
+            # Create feature groups for toggling
+            base_layer = folium.FeatureGroup(name="Base Map")
+            choropleth_layer = folium.FeatureGroup(name="Choropleth")
             
             # Add the GeoJSON data with custom styling and popups
             for idx, row in self.gdf.iterrows():
@@ -274,58 +197,91 @@ class InteractiveMapCreator:
                 <div style="font-family: Arial; width: 200px;">
                     <h4>{row[self.name_column]}</h4>
                     <p><strong>Value:</strong> {value if value is not None else 'No data'}</p>
-                    <p><strong>ID:</strong> {row.get('id', row.get('ID', 'N/A'))}</p>
                 </div>
                 """
                 
                 # Create a GeoJSON feature for this row
                 feature = {
                     'type': 'Feature',
-                    'geometry': json.loads(row.geometry.to_json()),
+                    'geometry': mapping(row.geometry),
                     'properties': {
                         'name': row[self.name_column],
                         'value': value
                     }
                 }
                 
-                # Add the feature to the map with styling
+                # Add base outline to base layer
                 folium.GeoJson(
                     feature,
-                    style_function=lambda x, value=value: {
-                        'fillColor': get_color(value),
+                    style_function=lambda x: {
+                        'fillColor': 'transparent',
                         'color': 'black',
                         'weight': 1,
-                        'fillOpacity': 0.7
+                        'fillOpacity': 0
                     },
-                    popup=folium.Popup(popup_content, max_width=300)
-                ).add_to(self.map)
+                    highlight_function=lambda x: {
+                        'fillColor': 'transparent',
+                        'color': 'black',
+                        'weight': 1,
+                        'fillOpacity': 0
+                    },
+                    tooltip=row[self.name_column],
+                    popup=None  # Set popup to None to disable click behavior
+                ).add_to(base_layer)
+                
+                # Add colored version to choropleth layer
+                if value is not None:
+                    # Create a tooltip-only version (no popup)
+                    folium.GeoJson(
+                        feature,
+                        style_function=lambda x, value=value: {
+                            'fillColor': colormap(value),
+                            'color': 'black',
+                            'weight': 1,
+                            'fillOpacity': 0.7
+                        },
+                        highlight_function=lambda x: {
+                            'weight': 1,
+                            'color': 'black',
+                            'fillOpacity': 0.7,
+                        },
+                        tooltip=f"{row[self.name_column]}: {value}",
+                        popup=None  # Set popup to None to disable click behavior
+                    ).add_to(choropleth_layer)
             
-            # Add a legend
-            legend_html = '''
-            <div style="position: fixed; bottom: 50px; left: 50px; z-index: 1000; background-color: white; 
-                        padding: 10px; border: 1px solid grey; border-radius: 5px;">
-                <p><strong>''' + self.data_column.replace('_', ' ').title() + '''</strong></p>
-                <div style="display: flex; align-items: center;">
-                    <div style="background: linear-gradient(to right, #FF0000, #FFFF00, #00FF00); 
-                                width: 150px; height: 20px;"></div>
-                    <div style="display: flex; justify-content: space-between; width: 150px;">
-                        <span>''' + str(min_value) + '''</span>
-                        <span>''' + str(max_value) + '''</span>
-                    </div>
-                </div>
-            </div>
-            '''
+            # Add the layers to the map
+            base_layer.add_to(self.map)
+            choropleth_layer.add_to(self.map)
             
-            self.map.get_root().html.add_child(folium.Element(legend_html))
+            # Add layer control if requested
+            if add_layer_control:
+                folium.LayerControl().add_to(self.map)
+            
+            # Add base map options
+            folium.TileLayer('openstreetmap', name='OpenStreetMap').add_to(self.map)
+            folium.TileLayer('cartodbpositron', name='CartoDB Positron').add_to(self.map)
+            folium.TileLayer('cartodbdark_matter', name='CartoDB Dark Matter').add_to(self.map)
+            
+            # Add CSS to disable selection highlighting
+            css = """
+            <style>
+            .leaflet-interactive {
+                outline: none !important;
+            }
+            </style>
+            """
+            self.map.get_root().html.add_child(folium.Element(css))
             
             # Ensure the directory exists
             os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else '.', exist_ok=True)
             
             # Save the map
             self.map.save(output_path)
-            print(f"Enhanced interactive choropleth map saved to {output_path}")
+            print(f"Interactive map saved to {output_path}")
             
             return self.map
         except Exception as e:
-            print(f"Error creating enhanced interactive choropleth map: {e}")
+            print(f"Error creating interactive map: {e}")
+            import traceback
+            traceback.print_exc()
             return None 
