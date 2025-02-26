@@ -1,6 +1,7 @@
 from geo_converter import GeoConverter
 from choropleth_generator import ChoroplethGenerator
 from interactive_map_creator import InteractiveMapCreator
+from data_processing import DataProcessing
 import os
 
 def main():
@@ -22,60 +23,52 @@ def main():
         print("Failed to convert custom JSON to GeoJSON.")
     
     geojson_to_use = geojson_output
+
+    # Import the Data ------------------------
+    DataObject = DataProcessing('battle_ground.csv')
+    client_data = DataObject.process_data()
     
-    # Step 2: Generate a choropleth visualization
-    choropleth = ChoroplethGenerator()
+    # Debug: Check client data before adding markers
+    print("\nDebug: Client Data Sample:")
+    print(client_data[['latitude', 'longitude', 'status']].head())
+    print(f"Total clients: {len(client_data)}")
     
-    # Load the GeoJSON
-    if choropleth.load_geojson(geojson_to_use):
-        # Example data for choropleth (replace with your actual data)
-        example_data = {
-            # East Sussex constituencies
-            "Bexhill and Battle": 75,
-            "Crowborough": 42,
-            "Tonbridge": 63,
-            "Heathfield": 89,
-            # Tunbridge Wells constituencies
-            "Tunbridge Wells": 58,
-            # Add more constituencies if using the complete UK GeoJSON
-            "High Weald": 55,
-            "Uckfield": 82,
-            "Hove": 67
-        }
-        
-        # Add the data to the GeoDataFrame
-        choropleth.add_data(example_data, "example_value")
-        
-        # Create a static choropleth map
-        choropleth.create_static_choropleth(
-            output_path="static_choropleth.png",
-            title="Example Values by Constituency"
-        )
-        
-        # Export the data as CSV
-        choropleth.export_data_as_csv("constituency_data.csv")
-    else:
-        print("Failed to load GeoJSON for choropleth generation.")
-        return
-    
-    # Step 3: Create interactive map
+    # Create interactive map with both choropleth and markers
     map_creator = InteractiveMapCreator()
     
     # Load the GeoJSON
     if map_creator.load_geojson(geojson_to_use):
-        # Add the same data
-        map_creator.add_data(example_data, "example_value")
+        # Calculate average status per constituency using the coordinates
+        constituency_scores = map_creator.calculate_point_averages(
+            points_df=client_data,
+            value_column='status',
+            lat_column='latitude',
+            lon_column='longitude'
+        )
         
-        # Create an interactive map with enhanced features
+        # Add the constituency data
+        map_creator.add_data(constituency_scores, "average_status")
+        
+        # Create the interactive map (but don't save yet)
         map_creator.create_interactive_map(
-            output_path="interactive_choropleth.html",
-            title="UK Constituencies - Example Values",
-            color_scheme="RdYlGn",  # Red-Yellow-Green color scheme
+            title="Estate Agent Relations",
+            color_scheme="RdYlGn",
             show_title=True,
             show_legend=True,
             add_layer_control=True,
-            zoom_start=6
+            zoom_start=10
         )
+        
+        # Add client markers to the map
+        map_creator.add_client_markers(
+            client_df=client_data,
+            status_column='status',
+            lat_column='latitude',
+            lon_column='longitude'
+        )
+        
+        # Now save the map with all layers
+        map_creator.save_map("interactive_choropleth.html")
         
         print("\nInteractive map created successfully!")
         print("Open the HTML file in your web browser to view the map.")

@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import os
+from shapely.geometry import Point
 
 class ChoroplethGenerator:
     """
@@ -202,4 +203,39 @@ class ChoroplethGenerator:
             return True
         except Exception as e:
             print(f"Error exporting data: {e}")
-            return False 
+            return False
+    
+    def calculate_point_averages(self, points_df, value_column, lat_column='latitude', lon_column='longitude'):
+        """
+        Calculate average values for points falling within each constituency polygon.
+        
+        Args:
+            points_df (pd.DataFrame): DataFrame containing point data with coordinates
+            value_column (str): Name of the column containing values to average
+            lat_column (str): Name of the latitude column
+            lon_column (str): Name of the longitude column
+            
+        Returns:
+            dict: Dictionary mapping constituency names to average values
+        """
+        # Convert points DataFrame to GeoDataFrame
+        geometry = [Point(xy) for xy in zip(points_df[lon_column], points_df[lat_column])]
+        points_gdf = gpd.GeoDataFrame(points_df, geometry=geometry)
+        
+        # Initialize dictionary to store results
+        constituency_averages = {}
+        
+        # For each constituency polygon
+        for idx, constituency in self.gdf.iterrows():
+            # Find points that fall within the constituency
+            points_within = points_gdf[points_gdf.geometry.within(constituency.geometry)]
+            
+            if len(points_within) > 0:
+                # Calculate average value for points within the constituency
+                avg_value = points_within[value_column].mean()
+                constituency_averages[constituency['name']] = avg_value
+            else:
+                # No points in this constituency
+                constituency_averages[constituency['name']] = None
+        
+        return constituency_averages 
